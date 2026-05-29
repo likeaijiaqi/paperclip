@@ -84,22 +84,22 @@ describe("selectDefaultCompanyGoalId", () => {
 describe("onboarding launch payloads", () => {
   it("links the onboarding project and first issue to the selected goal", () => {
     expect(buildOnboardingProjectPayload("goal-1")).toEqual({
-      name: "Onboarding",
+      name: "入门",
       status: "in_progress",
       goalIds: ["goal-1"],
     });
 
     expect(
       buildOnboardingIssuePayload({
-        title: "  Hire your first engineer  ",
-        description: "  Kick off the hiring plan  ",
+        title: "  明确第一条可交付路线  ",
+        description: "  把目标拆成可执行任务  ",
         assigneeAgentId: "agent-1",
         projectId: "project-1",
         goalId: "goal-1",
       }),
     ).toEqual({
-      title: "Hire your first engineer",
-      description: "Kick off the hiring plan",
+      title: "明确第一条可交付路线",
+      description: "把目标拆成可执行任务",
       assigneeAgentId: "agent-1",
       projectId: "project-1",
       goalId: "goal-1",
@@ -109,7 +109,7 @@ describe("onboarding launch payloads", () => {
 
   it("omits goal links when no default company goal exists", () => {
     expect(buildOnboardingProjectPayload(null)).toEqual({
-      name: "Onboarding",
+      name: "入门",
       status: "in_progress",
     });
 

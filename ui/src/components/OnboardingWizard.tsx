@@ -63,11 +63,19 @@ import {
 type Step = 1 | 2 | 3 | 4;
 type AdapterType = string;
 
-const DEFAULT_TASK_DESCRIPTION = `You are the CEO. You set the direction for the company.
+const DEFAULT_TASK_TITLE = "明确第一条可交付路线并拆成可执行任务";
 
-- hire a founding engineer
-- write a hiring plan
-- break the roadmap into concrete tasks and start delegating work`;
+const DEFAULT_TASK_DESCRIPTION = `你是这家公司的 CEO。先把方向收窄成一条能落地的路线，而不是泛泛讨论。
+
+请完成：
+- 写清楚当前最重要的目标和第一条用户旅程。
+- 定义什么结果算成功，最好能被观察或衡量。
+- 把路线拆成 2-4 个下一步任务，并说明每个任务应该交给谁。
+- 如果需要工程支持，写出第一位工程师需要具备的能力和招聘判断标准。
+
+完成标准：
+- 我读完后能知道下一步该点开哪个任务、让哪个代理继续做。
+- 每个后续任务都有明确产出，不只是“继续研究”。`;
 
 export function OnboardingWizard() {
   const { onboardingOpen, onboardingOptions, closeOnboarding } = useDialog();
@@ -126,7 +134,7 @@ export function OnboardingWizard() {
 
   // Step 3
   const [taskTitle, setTaskTitle] = useState(
-    "Hire your first engineer and create a hiring plan"
+    DEFAULT_TASK_TITLE
   );
   const [taskDescription, setTaskDescription] = useState(
     DEFAULT_TASK_DESCRIPTION
@@ -301,7 +309,7 @@ export function OnboardingWizard() {
     setAdapterEnvLoading(false);
     setForceUnsetAnthropicApiKey(false);
     setUnsetAnthropicLoading(false);
-    setTaskTitle("Hire your first engineer and create a hiring plan");
+    setTaskTitle(DEFAULT_TASK_TITLE);
     setTaskDescription(DEFAULT_TASK_DESCRIPTION);
     setCreatedCompanyId(null);
     setCreatedCompanyPrefix(null);

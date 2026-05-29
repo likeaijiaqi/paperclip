@@ -4,7 +4,7 @@ import { models as cursorFallbackModels } from "@paperclipai/adapter-cursor-loca
 import { models as opencodeFallbackModels } from "@paperclipai/adapter-opencode-local";
 import { resetOpenCodeModelsCacheForTests } from "@paperclipai/adapter-opencode-local/server";
 import { listAdapterModels, listServerAdapters, refreshAdapterModels } from "../adapters/index.js";
-import { resetCodexModelsCacheForTests } from "../adapters/codex-models.js";
+import { resetCodexModelsCacheForTests, setCodexModelsRunnerForTests } from "../adapters/codex-models.js";
 import { resetCursorModelsCacheForTests, setCursorModelsRunnerForTests } from "../adapters/cursor-models.js";
 
 vi.mock("acpx/runtime", () => ({
@@ -20,6 +20,12 @@ describe("adapter model listing", () => {
     delete process.env.PAPERCLIP_OPENCODE_COMMAND;
     resetCodexModelsCacheForTests();
     resetCursorModelsCacheForTests();
+    setCodexModelsRunnerForTests(() => ({
+      status: 1,
+      stdout: "",
+      stderr: "codex unavailable",
+      hasError: true,
+    }));
     setCursorModelsRunnerForTests(null);
     resetOpenCodeModelsCacheForTests();
     vi.restoreAllMocks();
@@ -43,6 +49,37 @@ describe("adapter model listing", () => {
 
     expect(models).toEqual(codexFallbackModels);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("loads codex models from the local Codex CLI catalog without an OpenAI key", async () => {
+    const runner = vi.fn(() => ({
+      status: 0,
+      stdout: JSON.stringify({
+        models: [
+          {
+            slug: "gpt-5.5",
+            display_name: "GPT-5.5",
+          },
+          {
+            slug: "gpt-5.4",
+            display_name: "gpt-5.4",
+          },
+        ],
+      }),
+      stderr: "",
+      hasError: false,
+    }));
+    setCodexModelsRunnerForTests(runner);
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    const first = await listAdapterModels("codex_local");
+    const second = await listAdapterModels("codex_local");
+
+    expect(runner).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(first).toEqual(second);
+    expect(first.some((model) => model.id === "gpt-5.5" && model.label === "GPT-5.5")).toBe(true);
+    expect(first.some((model) => model.id === "codex-mini-latest")).toBe(true);
   });
 
   it("loads codex models dynamically and merges fallback options", async () => {

@@ -1,12 +1,20 @@
 import type { AdapterModel } from "./types.js";
+import { spawnSync } from "node:child_process";
 import { models as codexFallbackModels } from "@paperclipai/adapter-codex-local";
 import { readConfigFile } from "../config-file.js";
 
 const OPENAI_MODELS_ENDPOINT = "https://api.openai.com/v1/models";
 const OPENAI_MODELS_TIMEOUT_MS = 5000;
 const OPENAI_MODELS_CACHE_TTL_MS = 60_000;
+const CODEX_MODELS_TIMEOUT_MS = 5000;
 
-let cached: { keyFingerprint: string; expiresAt: number; models: AdapterModel[] } | null = null;
+let cached: { cacheKey: string; expiresAt: number; models: AdapterModel[] } | null = null;
+let codexModelsRunnerForTests: (() => {
+  status: number | null;
+  stdout: string;
+  stderr: string;
+  hasError?: boolean;
+}) | null = null;
 
 function fingerprint(apiKey: string): string {
   return `${apiKey.length}:${apiKey.slice(-6)}`;
@@ -29,6 +37,60 @@ function mergedWithFallback(models: AdapterModel[]): AdapterModel[] {
     ...models,
     ...codexFallbackModels,
   ]).sort((a, b) => a.id.localeCompare(b.id, "en", { numeric: true, sensitivity: "base" }));
+}
+
+function parseCodexDebugModels(stdout: string): AdapterModel[] {
+  let payload: unknown;
+  try {
+    payload = JSON.parse(stdout);
+  } catch {
+    return [];
+  }
+
+  const rawModels =
+    Array.isArray(payload)
+      ? payload
+      : payload && typeof payload === "object" && Array.isArray((payload as { models?: unknown }).models)
+        ? (payload as { models: unknown[] }).models
+        : [];
+
+  const models: AdapterModel[] = [];
+  for (const item of rawModels) {
+    if (typeof item === "string") {
+      models.push({ id: item, label: item });
+      continue;
+    }
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    const id = [record.slug, record.id, record.model, record.name]
+      .find((candidate): candidate is string => typeof candidate === "string" && candidate.trim().length > 0)
+      ?.trim();
+    if (!id) continue;
+    const label = [record.display_name, record.label, record.name]
+      .find((candidate): candidate is string => typeof candidate === "string" && candidate.trim().length > 0)
+      ?.trim();
+    models.push({ id, label: label ?? id });
+  }
+  return dedupeModels(models);
+}
+
+function fetchLocalCodexModels(): AdapterModel[] {
+  const result = codexModelsRunnerForTests
+    ? codexModelsRunnerForTests()
+    : spawnSync("codex", ["debug", "models"], {
+      encoding: "utf8",
+      timeout: CODEX_MODELS_TIMEOUT_MS,
+      maxBuffer: 1024 * 1024,
+    });
+
+  const hasError =
+    "hasError" in result
+      ? result.hasError
+      : "error" in result
+        ? Boolean(result.error)
+        : false;
+  if ((result.status ?? 1) !== 0 || hasError) return [];
+  return parseCodexDebugModels(result.stdout);
 }
 
 function resolveOpenAiApiKey(): string | null {
@@ -74,26 +136,36 @@ async function loadCodexModels(options?: { forceRefresh?: boolean }): Promise<Ad
   const forceRefresh = options?.forceRefresh === true;
   const apiKey = resolveOpenAiApiKey();
   const fallback = dedupeModels(codexFallbackModels);
-  if (!apiKey) return fallback;
 
   const now = Date.now();
-  const keyFingerprint = fingerprint(apiKey);
-  if (!forceRefresh && cached && cached.keyFingerprint === keyFingerprint && cached.expiresAt > now) {
+  const cacheKey = apiKey ? `local+openai:${fingerprint(apiKey)}` : "local";
+  if (!forceRefresh && cached && cached.cacheKey === cacheKey && cached.expiresAt > now) {
     return cached.models;
   }
 
-  const fetched = await fetchOpenAiModels(apiKey);
-  if (fetched.length > 0) {
-    const merged = mergedWithFallback(fetched);
+  const localCodexModels = fetchLocalCodexModels();
+  if (localCodexModels.length > 0) {
+    const merged = mergedWithFallback(localCodexModels);
     cached = {
-      keyFingerprint,
+      cacheKey,
       expiresAt: now + OPENAI_MODELS_CACHE_TTL_MS,
       models: merged,
     };
     return merged;
   }
 
-  if (cached && cached.keyFingerprint === keyFingerprint && cached.models.length > 0) {
+  const fetched = apiKey ? await fetchOpenAiModels(apiKey) : [];
+  if (fetched.length > 0) {
+    const merged = mergedWithFallback(fetched);
+    cached = {
+      cacheKey,
+      expiresAt: now + OPENAI_MODELS_CACHE_TTL_MS,
+      models: merged,
+    };
+    return merged;
+  }
+
+  if (cached && cached.cacheKey === cacheKey && cached.models.length > 0) {
     return cached.models;
   }
 
@@ -110,4 +182,8 @@ export async function refreshCodexModels(): Promise<AdapterModel[]> {
 
 export function resetCodexModelsCacheForTests() {
   cached = null;
+}
+
+export function setCodexModelsRunnerForTests(runner: typeof codexModelsRunnerForTests) {
+  codexModelsRunnerForTests = runner;
 }

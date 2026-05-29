@@ -1,7 +1,7 @@
 import * as React from "react";
 import { StrictMode } from "react";
 import * as ReactDOM from "react-dom";
-import { createRoot } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 import { BrowserRouter } from "@/lib/router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App } from "./App";
@@ -17,10 +17,18 @@ import { ThemeProvider } from "./context/ThemeContext";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { initPluginBridge } from "./plugins/bridge-init";
 import { PluginLauncherProvider } from "./plugins/launchers";
+import { installChineseUiRuntime } from "./i18n/chinese-ui-runtime";
 import "@mdxeditor/editor/style.css";
 import "./index.css";
 
+declare global {
+  var __paperclipReactRoot: Root | undefined;
+  var __paperclipChineseUiRuntime: { disconnect: () => void } | undefined;
+}
+
 initPluginBridge(React, ReactDOM);
+globalThis.__paperclipChineseUiRuntime?.disconnect();
+globalThis.__paperclipChineseUiRuntime = installChineseUiRuntime();
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
@@ -42,7 +50,11 @@ function CompanyAwareBreadcrumbProvider({ children }: { children: React.ReactNod
   return <BreadcrumbProvider companyName={selectedCompany?.name ?? null}>{children}</BreadcrumbProvider>;
 }
 
-createRoot(document.getElementById("root")!).render(
+const rootElement = document.getElementById("root")!;
+const root = globalThis.__paperclipReactRoot ?? createRoot(rootElement);
+globalThis.__paperclipReactRoot = root;
+
+root.render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
